@@ -2,4 +2,5 @@ Flask
 opencv-python
 numpy
 Pillow 
+boto3
 # libgl1 # (might be needed for some systems)
