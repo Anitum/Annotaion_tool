@@ -13,7 +13,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-BASE_DIR = '/home/ubuntu/runs/detect/predict8'
+BASE_DIR = 'detect/predict'
 FRAMES_DIR = os.path.join(BASE_DIR)
 LABELS_DIR = os.path.join(BASE_DIR, '3MB')
 CONFIG_FILE = 'config.json'
