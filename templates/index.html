@@ -1,0 +1,24 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Frame Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 10px 0; }
+        a { color: #0066cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>Available Videos</h1>
+    <ul>
+        {% for video in videos %}
+            <li><a href="/view/{{ video }}">{{ video }}</a></li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
+        

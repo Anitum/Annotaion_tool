@@ -1,0 +1,309 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ video_name }} - Frame Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        .viewer { display: flex; flex-direction: column; align-items: center; }
+        .controls { margin: 20px 0; }
+        .frame-info { margin-bottom: 10px; }
+        .image-container { 
+            position: relative; 
+            display: inline-block;
+            max-width: 90%; 
+            max-height: 70vh;
+        }
+        img { 
+            max-width: 100%; 
+            max-height: 70vh; 
+            border: 1px solid #ccc; 
+        }
+        button { 
+            padding: 8px 15px; 
+            margin: 0 5px; 
+            background-color: #0066cc; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            border-radius: 4px;
+        }
+        button:hover { background-color: #004c99; }
+        .class-legend {
+            display: inline-block;
+            margin: 5px 10px;
+            padding: 5px;
+            border-radius: 4px;
+            color: white;
+        }
+        .selection-info {
+            font-weight: bold;
+            margin: 10px 0;
+            height: 24px;
+        }
+        #loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background-color: #0066cc;
+            z-index: 1000;
+            display: none;
+        }
+        #status-message {
+            color: green;
+            font-weight: bold;
+            height: 20px;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-indicator"></div>
+    <h1>{{ video_name }}</h1>
+    <div class="viewer">
+        <div class="frame-info">
+            Frame <span id="current-frame">1</span> of {{ total_frames }}
+        </div>
+        <div class="selection-info" id="selection-info">
+            Click on a bounding box to select it, then press 0-5 to change its class
+        </div>
+        <div class="image-container">
+            <img id="frame-image" src="/frame/{{ video_name }}/{{ frame_numbers[0] }}" alt="Frame">
+        </div>
+        <div id="status-message"></div>
+        <div class="controls">
+            <button id="prev-button">Previous (B)</button>
+            <button id="next-button">Next (N)</button>
+        </div>
+        <div>
+            <div style="margin-top: 15px; text-align: center;">Class Legend:</div>
+            <div style="display: flex; justify-content: center; flex-wrap: wrap;">
+                {% for class_id, color in class_colors.items() %}
+                    <div class="class-legend" style="background-color: rgb({{ color[0] }}, {{ color[1] }}, {{ color[2] }})">
+                        Class {{ class_id }}
+                    </div>
+                {% endfor %}
+            </div>
+            <h3>0 coustomer , 1 manager , 2 waiter , 3 sweet people , 4 back kitchen , 5 cleaner </h3>
+        </div>
+    </div>
+
+    <script>
+        const frameNumbers = {{ frame_numbers|tojson }};
+        let currentIndex = 0;
+        const totalFrames = frameNumbers.length;
+        const videoName = "{{ video_name }}";
+        const nextVideo = "{{ next_video }}";
+        
+        let currentBoxes = [];
+        let selectedBoxId = null;
+        let timestamp = Date.now();
+        
+        // Map to convert key codes to class IDs
+        const keyToClassMap = {
+            '0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5
+        };
+
+        function showLoading() {
+            document.getElementById('loading-indicator').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-indicator').style.display = 'none';
+        }
+
+        function showStatus(message, isError = false) {
+            const statusElement = document.getElementById('status-message');
+            statusElement.textContent = message;
+            statusElement.style.color = isError ? 'red' : 'green';
+            
+            // Clear the message after 3 seconds
+            setTimeout(() => {
+                statusElement.textContent = '';
+            }, 3000);
+        }
+
+        function updateFrame() {
+            showLoading();
+            document.getElementById('current-frame').textContent = currentIndex + 1;
+            
+            // Clear selection
+            selectedBoxId = null;
+            updateSelectionInfo();
+            
+            // Update timestamp to prevent caching
+            timestamp = Date.now();
+            
+            // Update image
+            const frameImage = document.getElementById('frame-image');
+            frameImage.src = `/frame/${videoName}/${frameNumbers[currentIndex]}?ts=${timestamp}`;
+            
+            // Wait for image to load
+            frameImage.onload = function() {
+                hideLoading();
+                // Load boxes after image is loaded
+                loadBoxes();
+            };
+            
+            frameImage.onerror = function() {
+                hideLoading();
+                showStatus('Error loading image', true);
+            };
+        }
+
+        function loadBoxes() {
+            fetch(`/boxes/${videoName}/${frameNumbers[currentIndex]}?ts=${timestamp}`)
+                .then(response => response.json())
+                .then(boxes => {
+                    currentBoxes = boxes;
+                    setupImageClickHandler();
+                })
+                .catch(error => {
+                    console.error('Error loading boxes:', error);
+                    showStatus('Error loading bounding boxes', true);
+                });
+        }
+        
+        function updateSelectionInfo() {
+            const infoElement = document.getElementById('selection-info');
+            
+            if (selectedBoxId !== null) {
+                const selectedBox = currentBoxes.find(box => box.id === selectedBoxId);
+                if (selectedBox) {
+                    infoElement.textContent = `Selected: Box ${selectedBoxId} (Class ${selectedBox.class_id}) - Press 0-5 to change class`;
+                    infoElement.style.color = '#0066cc';
+                }
+            } else {
+                infoElement.textContent = 'Click on a bounding box to select it, then press 0-5 to change its class';
+                infoElement.style.color = '#333';
+            }
+        }
+
+        function setupImageClickHandler() {
+            const frameImage = document.getElementById('frame-image');
+            
+            frameImage.onclick = function(event) {
+                // Get click coordinates relative to the image
+                const rect = frameImage.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                // Calculate click position as a ratio of the displayed image dimensions
+                const xRatio = x / frameImage.clientWidth;
+                const yRatio = y / frameImage.clientHeight;
+                
+                // Check if click is inside any box
+                let found = false;
+                for (const box of currentBoxes) {
+                    const x1Ratio = box.coords.x1 / frameImage.naturalWidth;
+                    const y1Ratio = box.coords.y1 / frameImage.naturalHeight;
+                    const x2Ratio = box.coords.x2 / frameImage.naturalWidth;
+                    const y2Ratio = box.coords.y2 / frameImage.naturalHeight;
+                    
+                    if (xRatio >= x1Ratio && xRatio <= x2Ratio && 
+                        yRatio >= y1Ratio && yRatio <= y2Ratio) {
+                        selectedBoxId = box.id;
+                        found = true;
+                        showStatus(`Selected box ${box.id} (Class ${box.class_id})`);
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    selectedBoxId = null;
+                    showStatus('No box selected');
+                }
+                
+                updateSelectionInfo();
+            };
+        }
+
+        function changeSelectedBoxClass(newClassId) {
+            if (selectedBoxId === null) return;
+            
+            showLoading();
+            fetch('/update_class', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    video_name: videoName,
+                    frame_number: frameNumbers[currentIndex],
+                    box_id: selectedBoxId,
+                    new_class_id: newClassId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    // Update timestamp to prevent caching
+                    timestamp = data.timestamp || Date.now();
+                    
+                    // Update the class in the current boxes array
+                    const box = currentBoxes.find(box => box.id === selectedBoxId);
+                    if (box) {
+                        box.class_id = newClassId;
+                        updateSelectionInfo();
+                    }
+                    
+                    // Reload frame to show updated class
+                    const frameImage = document.getElementById('frame-image');
+                    frameImage.src = `/frame/${videoName}/${frameNumbers[currentIndex]}?ts=${timestamp}`;
+                    
+                    showStatus(`Changed box ${selectedBoxId} to Class ${newClassId}`);
+                } else {
+                    console.error('Failed to update class:', data.error);
+                    showStatus(`Failed to update class: ${data.error}`, true);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showStatus('Error updating class', true);
+            });
+        }
+
+        function nextFrame() {
+            if (currentIndex < totalFrames - 1) {
+                currentIndex++;
+                updateFrame();
+            } else if (nextVideo) {
+                // Auto-progress to next video
+                window.location.href = `/view/${nextVideo}`;
+            }
+        }
+
+        function prevFrame() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateFrame();
+            }
+        }
+
+        document.getElementById('next-button').addEventListener('click', nextFrame);
+        document.getElementById('prev-button').addEventListener('click', prevFrame);
+
+        // Keyboard controls
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'n' || event.key === 'N') {
+                nextFrame();
+            } else if (event.key === 'b' || event.key === 'B') {
+                prevFrame();
+            } else if (keyToClassMap.hasOwnProperty(event.key)) {
+                // Number keys 0-5 for changing class
+                changeSelectedBoxClass(keyToClassMap[event.key]);
+            }
+        });
+
+        // Initial load
+        updateFrame();
+    </script>
+</body>
+</html>
+        

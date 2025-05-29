@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Annotate {{ video_name }}</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 10px; 
+            background-color: #f5f5f5;
+        }
+        .container { 
+            max-width: 1600px; 
+            margin: 0 auto; 
+        }
+        .header {
+            background: white;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 10px;
+        }
+        .image-container {
+            background: white;
+            padding: 10px;
+        }
+        .controls-panel {
+            background: white;
+            padding: 10px;
+        }
+        .image-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        #annotationImage {
+            display: block;
+            max-width: 100%;
+            max-height: 700px;
+        }
+        .crosshair {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1001;
+            display: none;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .crosshair-h {
+            position: absolute;
+            height: 1px;
+            background: rgba(255, 0, 0, 0.8);
+            width: 100%;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+        }
+        .crosshair-v {
+            position: absolute;
+            width: 1px;
+            background: rgba(255, 0, 0, 0.8);
+            height: 100%;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
+        }
+        .frame-nav {
+            margin: 10px 0;
+            text-align: center;
+        }
+        .frame-nav button {
+            margin: 0 5px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .frame-nav button:disabled {
+            background: #ccc;
+        }
+        .classes-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+        }
+        .class-item {
+            cursor: pointer;
+            text-align: center;
+            padding: 0;
+            border: 1px solid #ddd;
+            position: relative;
+            aspect-ratio: 1;
+        }
+        .class-item.selected {
+            border: 3px solid #007bff;
+            background: #e3f2fd;
+        }
+        .class-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .class-placeholder {
+            width: 100%;
+            height: 100%;
+            background: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .class-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 9px;
+            font-weight: bold;
+            padding: 1px;
+        }
+        .mode-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .mode-button {
+            padding: 8px 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .mode-button.active {
+            background: #28a745;
+            color: white;
+        }
+        .mode-button:not(.active) {
+            background: #6c757d;
+            color: white;
+        }
+        .mode-indicator {
+            background: #17a2b8;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .mode-indicator.draw-mode {
+            background: #fd7e14;
+        }
+        .temp-box {
+            position: absolute;
+            border: 2px dashed #ff0000;
+            background: rgba(255, 0, 0, 0.1);
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .save-button {
+            background: #28a745;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .next-video-link {
+            display: block;
+            text-align: center;
+            padding: 10px;
+            background: #6f42c1;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .selected-box-indicator {
+            position: absolute;
+            border: 3px solid #ff6b6b;
+            background: rgba(255, 107, 107, 0.2);
+            pointer-events: none;
+            z-index: 999;
+            display: none;
+        }
+        .copy-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 10000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>{{ video_name }} - Frame <span id="currentFrameNum">1</span>/{{ total_frames }}</h2>
+            <a href="/">← Back to Videos</a>
+        </div>
+
+        <div class="main-content">
+            <div class="image-container">
+                <div class="image-wrapper" id="imageWrapper">
+                    <img id="annotationImage" src="" alt="Current frame">
+                    <div class="selected-box-indicator" id="selectedBoxIndicator"></div>
+                    <div class="crosshair" id="crosshair">
+                        <div class="crosshair-h" id="crosshairH"></div>
+                        <div class="crosshair-v" id="crosshairV"></div>
+                    </div>
+                </div>
+                
+                <div class="frame-nav">
+                    <button onclick="previousFrame()" id="prevBtn">← Back (B)</button>
+                    <span>Frame: <span id="frameIndicator">1</span></span>
+                    <button onclick="nextFrame()" id="nextBtn">Next (N) →</button>
+                </div>
+
+                <div class="classes-grid">
+                    {% for class_id, class_name in config.classes.items() %}
+                    {% if class_id|int < 10 %}
+                    <div class="class-item" data-class="{{ class_id }}" onclick="selectClass({{ class_id }})">
+                        <img class="class-image" src="/class_image/{{ class_id }}" 
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="class-placeholder" style="display: none;">{{ class_id }}</div>
+                        <div class="class-name"style="font-size: 1.2em; font-weight: bold;">{{ class_id | int + 1 }}:{{ class_name }}</div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="controls-panel">
+                <div class="mode-indicator" id="modeIndicator">SELECT MODE</div>
+                
+                <div class="mode-buttons">
+                    <button class="mode-button active" id="selectMode" onclick="setMode('select')">Select</button>
+                    <button class="mode-button" id="drawMode" onclick="setMode('draw')">Draw</button>
+                </div>
+                
+                <button onclick="saveAndNext()" class="save-button">Save & Next</button>
+
+                {% if next_video %}
+                <a href="/view/{{ next_video }}" class="next-video-link">
+                    Next Video: {{ next_video }}
+                </a>
+                {% endif %}
+
+                <div style="font-size: 1.2em; font-weight: bold;">
+                    <strong>Shortcuts:</strong><br>
+                    N: Next frame<br>
+                    B: Back frame<br>
+                    1-9: Select class<br>
+                    Click box + 1-9: Change class<br>
+                    Double-click: Draw mode<br>
+                    C: Copy selected box<br>
+                    D: Delete selected box<br>
+                    Right-click: Delete
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="copy-indicator" id="copyIndicator">Box copied! Click to paste</div>
+
+    <script>
+        const videoName = '{{ video_name }}';
+        const frameNumbers = {{ frame_numbers | tojson }};
+        const config = {{ config | tojson }};
+        const nextVideo = '{{ next_video }}';
+        
+        let currentFrameIndex = 0;
+        let selectedClass = 0;
+        let currentMode = 'select';
+        let isDrawing = false;
+        let startX, startY;
+        let tempBox = null;
+        let selectedBoxId = null;
+        let selectedBoxCoords = null;
+        let copiedBox = null;
+
+        function selectClass(classId) {
+            selectedClass = parseInt(classId);
+            document.querySelectorAll('.class-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            document.querySelector(`[data-class="${classId}"]`).classList.add('selected');
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            const indicator = document.getElementById('modeIndicator');
+            const imageWrapper = document.getElementById('imageWrapper');
+            const crosshair = document.getElementById('crosshair');
+            
+            // Update mode buttons
+            document.querySelectorAll('.mode-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(mode + 'Mode').classList.add('active');
+            
+            if (mode === 'draw') {
+                indicator.textContent = 'DRAW MODE';
+                indicator.classList.add('draw-mode');
+                imageWrapper.style.cursor = 'crosshair';
+                crosshair.style.display = 'block';
+            } else {
+                indicator.textContent = 'SELECT MODE';
+                indicator.classList.remove('draw-mode');
+                imageWrapper.style.cursor = 'default';
+                crosshair.style.display = 'none';
+            }
+            
+            // Clear selected box when changing modes
+            clearSelectedBox();
+        }
+
+        function clearSelectedBox() {
+            selectedBoxId = null;
+            selectedBoxCoords = null;
+            document.getElementById('selectedBoxIndicator').style.display = 'none';
+        }
+
+        function showSelectedBox(coords) {
+            const img = document.getElementById('annotationImage');
+            const indicator = document.getElementById('selectedBoxIndicator');
+            
+            // Convert image coordinates to display coordinates
+            const scaleX = img.offsetWidth / img.naturalWidth;
+            const scaleY = img.offsetHeight / img.naturalHeight;
+            
+            const displayX1 = coords.x1 * scaleX;
+            const displayY1 = coords.y1 * scaleY;
+            const displayX2 = coords.x2 * scaleX;
+            const displayY2 = coords.y2 * scaleY;
+            
+            indicator.style.left = displayX1 + 'px';
+            indicator.style.top = displayY1 + 'px';
+            indicator.style.width = (displayX2 - displayX1) + 'px';
+            indicator.style.height = (displayY2 - displayY1) + 'px';
+            indicator.style.display = 'block';
+        }
+
+        function showCopyIndicator() {
+            const indicator = document.getElementById('copyIndicator');
+            indicator.style.display = 'block';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 2000);
+        }
+
+        function copySelectedBox() {
+            if (selectedBoxId !== null && selectedBoxCoords !== null) {
+                const frameNumber = frameNumbers[currentFrameIndex];
+                
+                // Get the actual box data
+                fetch(`/boxes/${videoName}/${frameNumber}`)
+                .then(response => response.json())
+                .then(boxes => {
+                    const box = boxes.find(b => b.id === selectedBoxId);
+                    if (box) {
+                        copiedBox = {
+                            class_id: box.class_id,
+                            width: box.width,
+                            height: box.height
+                        };
+                        showCopyIndicator();
+                    }
+                });
+            }
+        }
+
+        function pasteBox(clickX, clickY) {
+            if (!copiedBox) return;
+            
+            const frameNumber = frameNumbers[currentFrameIndex];
+            const img = document.getElementById('annotationImage');
+            
+            // Convert click position to normalized coordinates
+            const scaleX = img.naturalWidth / img.offsetWidth;
+            const scaleY = img.naturalHeight / img.offsetHeight;
+            
+            const realClickX = clickX * scaleX;
+            const realClickY = clickY * scaleY;
+            
+            // Calculate box coordinates centered on click
+            const boxWidth = copiedBox.width * img.naturalWidth;
+            const boxHeight = copiedBox.height * img.naturalHeight;
+            
+            const x1 = Math.max(0, realClickX - boxWidth/2);
+            const y1 = Math.max(0, realClickY - boxHeight/2);
+            const x2 = Math.min(img.naturalWidth, realClickX + boxWidth/2);
+            const y2 = Math.min(img.naturalHeight, realClickY + boxHeight/2);
+            
+            fetch('/add_box', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_name: videoName,
+                    frame_number: frameNumber,
+                    x1: x1,
+                    y1: y1,
+                    x2: x2,
+                    y2: y2,
+                    class_id: copiedBox.class_id
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadFrame(currentFrameIndex);
+                }
+            });
+        }
+
+        function deleteSelectedBox() {
+            if (selectedBoxId !== null) {
+                const frameNumber = frameNumbers[currentFrameIndex];
+                
+                fetch('/delete_box', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_name: videoName,
+                        frame_number: frameNumber,
+                        box_id: selectedBoxId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        clearSelectedBox();
+                        loadFrame(currentFrameIndex);
+                    }
+                });
+            }
+        }
+
+        function loadFrame(frameIndex) {
+            if (frameIndex < 0 || frameIndex >= frameNumbers.length) {
+                // Auto-advance to next video if at end
+                if (frameIndex >= frameNumbers.length && nextVideo) {
+                    window.location.href = `/view/${nextVideo}`;
+                }
+                return;
+            }
+            
+            currentFrameIndex = frameIndex;
+            const frameNumber = frameNumbers[frameIndex];
+            const timestamp = Date.now();
+            
+            const img = document.getElementById('annotationImage');
+            img.src = `/frame/${videoName}/${frameNumber}?ts=${timestamp}`;
+            
+            document.getElementById('currentFrameNum').textContent = frameIndex + 1;
+            document.getElementById('frameIndicator').textContent = frameNumber;
+            
+            document.getElementById('prevBtn').disabled = frameIndex === 0;
+            document.getElementById('nextBtn').disabled = frameIndex === frameNumbers.length - 1;
+            
+            // Clear selected box when changing frames
+            clearSelectedBox();
+        }
+
+        function previousFrame() {
+            if (currentFrameIndex > 0) {
+                loadFrame(currentFrameIndex - 1);
+            }
+        }
+
+        function nextFrame() {
+            if (currentFrameIndex < frameNumbers.length - 1) {
+                loadFrame(currentFrameIndex + 1);
+            } else if (nextVideo) {
+                // Auto-advance to next video
+                window.location.href = `/view/${nextVideo}`;
+            }
+        }
+
+        function saveAndNext() {
+            nextFrame();
+        }
+
+        // Update crosshair position
+        document.getElementById('imageWrapper').addEventListener('mousemove', function(e) {
+            if (currentMode === 'draw') {
+                const rect = document.getElementById('annotationImage').getBoundingClientRect();
+                const crosshairH = document.getElementById('crosshairH');
+                const crosshairV = document.getElementById('crosshairV');
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                crosshairH.style.top = y + 'px';
+                crosshairV.style.left = x + 'px';
+            }
+        });
+
+        // Double-click to enter draw mode
+        document.getElementById('imageWrapper').addEventListener('dblclick', function(e) {
+            if (e.target.id === 'annotationImage') {
+                setMode('draw');
+            }
+        });
+
+        // Mouse events for drawing
+        document.getElementById('imageWrapper').addEventListener('mousedown', function(e) {
+            if (currentMode === 'draw' && e.target.id === 'annotationImage') {
+                isDrawing = true;
+                const rect = e.target.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+                
+                tempBox = document.createElement('div');
+                tempBox.className = 'temp-box';
+                tempBox.style.left = startX + 'px';
+                tempBox.style.top = startY + 'px';
+                tempBox.style.width = '0px';
+                tempBox.style.height = '0px';
+                this.appendChild(tempBox);
+                
+                e.preventDefault();
+            }
+        });
+
+        document.getElementById('imageWrapper').addEventListener('mousemove', function(e) {
+            if (isDrawing && currentMode === 'draw') {
+                const rect = document.getElementById('annotationImage').getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+                
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+                const left = Math.min(startX, currentX);
+                const top = Math.min(startY, currentY);
+                
+                tempBox.style.left = left + 'px';
+                tempBox.style.top = top + 'px';
+                tempBox.style.width = width + 'px';
+                tempBox.style.height = height + 'px';
+            }
+        });
+
+        document.getElementById('imageWrapper').addEventListener('mouseup', function(e) {
+            if (!isDrawing || currentMode !== 'draw') return;
+            
+            isDrawing = false;
+            const rect = document.getElementById('annotationImage').getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+            
+            if (tempBox) {
+                tempBox.remove();
+                tempBox = null;
+            }
+            
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+            
+            if (width > 20 && height > 20) {
+                const frameNumber = frameNumbers[currentFrameIndex];
+                
+                // Convert to image coordinates
+                const img = document.getElementById('annotationImage');
+                const scaleX = img.naturalWidth / img.offsetWidth;
+                const scaleY = img.naturalHeight / img.offsetHeight;
+                
+                const realX1 = Math.min(startX, endX) * scaleX;
+                const realY1 = Math.min(startY, endY) * scaleY;
+                const realX2 = Math.max(startX, endX) * scaleX;
+                const realY2 = Math.max(startY, endY) * scaleY;
+                
+                fetch('/add_box', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_name: videoName,
+                        frame_number: frameNumber,
+                        x1: realX1,
+                        y1: realY1,
+                        x2: realX2,
+                        y2: realY2,
+                        class_id: selectedClass
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadFrame(currentFrameIndex);
+                    }
+                });
+            }
+        });
+
+        // Click on image for class change, box selection, and pasting
+        document.getElementById('annotationImage').addEventListener('click', function(e) {
+            if (currentMode === 'select') {
+                const frameNumber = frameNumbers[currentFrameIndex];
+                
+                // Get click coordinates
+                const rect = this.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                
+                // If we have a copied box, paste it
+                if (copiedBox) {
+                    pasteBox(clickX, clickY);
+                    copiedBox = null;
+                    document.getElementById('copyIndicator').style.display = 'none';
+                    return;
+                }
+                
+                // Convert to image coordinates
+                const scaleX = this.naturalWidth / this.offsetWidth;
+                const scaleY = this.naturalHeight / this.offsetHeight;
+                const realX = clickX * scaleX;
+                const realY = clickY * scaleY;
+                
+                // Find which box was clicked
+                fetch(`/boxes/${videoName}/${frameNumber}`)
+                .then(response => response.json())
+                .then(boxes => {
+                    let foundBox = null;
+                    for (let box of boxes) {
+                        if (realX >= box.coords.x1 && realX <= box.coords.x2 &&
+                            realY >= box.coords.y1 && realY <= box.coords.y2) {
+                            foundBox = box;
+                            break;
+                        }
+                    }
+                    
+                    if (foundBox) {
+                        // Select this box
+                        selectedBoxId = foundBox.id;
+                        selectedBoxCoords = foundBox.coords;
+                        showSelectedBox(foundBox.coords);
+                        
+                        // Update this box's class to currently selected class
+                        fetch('/update_class', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                video_name: videoName,
+                                frame_number: frameNumber,
+                                box_id: foundBox.id,
+                                new_class_id: selectedClass
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                loadFrame(currentFrameIndex);
+                                // Re-show selection after reload
+                                setTimeout(() => {
+                                    if (selectedBoxId !== null) {
+                                        showSelectedBox(selectedBoxCoords);
+                                    }
+                                }, 100);
+                            }
+                        });
+                    } else {
+                        // Clear selection if clicked outside any box
+                        clearSelectedBox();
+                    }
+                });
+            }
+        });
+
+        // Right-click for delete
+        document.getElementById('annotationImage').addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            
+            const frameNumber = frameNumbers[currentFrameIndex];
+            const rect = this.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            
+            const scaleX = this.naturalWidth / this.offsetWidth;
+            const scaleY = this.naturalHeight / this.offsetHeight;
+            const realX = clickX * scaleX;
+            const realY = clickY * scaleY;
+            
+            fetch(`/boxes/${videoName}/${frameNumber}`)
+            .then(response => response.json())
+            .then(boxes => {
+                for (let box of boxes) {
+                    if (realX >= box.coords.x1 && realX <= box.coords.x2 &&
+                        realY >= box.coords.y1 && realY <= box.coords.y2) {
+                        
+                        fetch('/delete_box', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                video_name: videoName,
+                                frame_number: frameNumber,
+                                box_id: box.id
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                clearSelectedBox();
+                                loadFrame(currentFrameIndex);
+                            }
+                        });
+                        break;
+                    }
+                }
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key >= '1' && e.key <= '9') {
+                const classId = parseInt(e.key) - 1;
+                if (classId < 10) {
+                    // If a box is selected, change its class
+                    if (selectedBoxId !== null) {
+                        const frameNumber = frameNumbers[currentFrameIndex];
+                        fetch('/update_class', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                video_name: videoName,
+                                frame_number: frameNumber,
+                                box_id: selectedBoxId,
+                                new_class_id: classId
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                loadFrame(currentFrameIndex);
+                                // Re-show selection after reload
+                                setTimeout(() => {
+                                    if (selectedBoxId !== null) {
+                                        showSelectedBox(selectedBoxCoords);
+                                    }
+                                }, 100);
+                            }
+                        });
+                    } else {
+                        // Just select the class
+                        selectClass(classId);
+                    }
+                }
+            } else if (e.key === 'n' || e.key === 'N') {
+                e.preventDefault();
+                nextFrame();
+            } else if (e.key === 'b' || e.key === 'B') {
+                e.preventDefault();
+                previousFrame();
+            } else if (e.key === 'c' || e.key === 'C') {
+                e.preventDefault();
+                copySelectedBox();
+            } else if (e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                deleteSelectedBox();
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                nextFrame();
+            }
+        });
+
+        // Initialize
+        selectClass(0);
+        setMode('select');
+        loadFrame(0);
+    </script>
+</body>
+</html>
